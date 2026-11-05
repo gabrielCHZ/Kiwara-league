@@ -1,0 +1,144 @@
+<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pokémon League Creator</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:14px system-ui,sans-serif;background:#12141c;color:#eee;display:flex;min-height:100vh}
+nav{width:200px;background:#1c1f2b;padding:14px;position:sticky;top:0;height:100vh;flex:none}nav h1{font-size:16px;color:#ffcb05;margin:0 0 14px}
+nav a{display:block;padding:9px 10px;border-radius:8px;cursor:pointer;margin-bottom:3px}nav a:hover{background:#2a2e3f}nav a.on{background:#e63946}
+main{flex:1;padding:22px;min-width:0}h2{margin-top:0}h3{color:#ffcb05;border-bottom:2px solid #e63946;padding-bottom:4px}
+button,select,input,textarea{font:inherit;padding:7px 10px;border-radius:7px;border:1px solid #3a3f55;background:#242838;color:#eee}
+button{background:#e63946;border:0;cursor:pointer;margin:2px}button.s{background:#3a3f55}button:hover{filter:brightness(1.15)}
+.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-top:10px}
+.pk{background:#1c1f2b;border-radius:8px;text-align:center;padding:6px;cursor:pointer;font-size:11px}.pk:hover{outline:2px solid #ffcb05}.pk img{width:80px;height:80px;object-fit:contain}
+.tg{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.tc{border-radius:12px;padding:10px;cursor:pointer;border:2px solid #ffcb05;position:relative}.tc:hover{transform:translateY(-2px)}
+.tc .p{width:100%;height:110px;object-fit:contain;background:#0006;border-radius:8px}.tc b{display:block;margin-top:4px}
+.tm img{width:34px;height:34px}.bd{position:absolute;right:8px;top:8px;width:40px;height:40px;object-fit:contain}
+#modal:not(:empty){position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:9}
+.mb{background:#1c1f2b;border-radius:12px;padding:20px;width:900px;max-width:95vw;max-height:90vh;overflow:auto}
+.mb label{display:block;margin:8px 0}.mb input:not([type=file]):not([type=checkbox]),.mb textarea,.mb select{width:100%;display:block;margin-top:3px}
+.row{display:flex;align-items:center;gap:6px;margin:3px 0}.row img{width:40px;height:40px}.row span{flex:1}
+canvas{width:100%;border-radius:10px}.cg{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+@media(max-width:760px){body{flex-direction:column}nav{width:100%;height:auto;position:static;display:flex;overflow-x:auto;gap:4px}nav h1{display:none}nav a{white-space:nowrap}main{padding:12px}}@media print{nav,button{display:none}body{background:#fff;color:#000}.tc{break-inside:avoid}}
+</style></head><body>
+<nav id="nav"></nav><main id="main"></main><div id="modal"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+const TY={normal:['Normal','#a8a77a'],fire:['Feu','#ee8130'],water:['Eau','#6390f0'],grass:['Plante','#7ac74c'],electric:['Électrik','#f7d02c'],ice:['Glace','#96d9d6'],fighting:['Combat','#c22e28'],poison:['Poison','#a33ea1'],ground:['Sol','#e2bf65'],flying:['Vol','#a98ff3'],psychic:['Psy','#f95587'],bug:['Insecte','#a6b91a'],rock:['Roche','#b6a136'],ghost:['Spectre','#735797'],dragon:['Dragon','#6f35fc'],dark:['Ténèbres','#705746'],steel:['Acier','#b7b7ce'],fairy:['Fée','#d685ad']};
+const TT=["Champion d'Arène","Conseil 4","Maître de la Ligue","Boss"];
+const KEYS=[...[1,2,3,4,5,6,7,8].map(i=>'c'+i),...[1,2,3,4].map(i=>'e'+i),'m1'];
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const SP=(id,sh)=>'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/'+(id<=649?'versions/generation-v/black-white/':'')+(sh?'shiny/':'')+id+'.png';
+const GN=[['Gén. 1',151],['Gén. 2',251],['Gén. 3',386],['Gén. 4',493],['Gén. 5',649],['Gén. 6',721],['Gén. 7',809],['Gén. 8',905],['Gén. 9',1025],['Formes',1e9]],gen=id=>GN.findIndex(g=>id<=g[1]);
+const tyName=t=>t?TY[t][0]:'—',tyCol=t=>t?TY[t][1]:'#667';
+let S,P=[],IT=[],cur='home',TS={};
+const db=new Promise(r=>{const q=indexedDB.open('plc',1);q.onupgradeneeded=()=>q.result.createObjectStore('k');q.onsuccess=()=>r(q.result)});
+const load=async()=>{const d=await db;return new Promise(r=>{const g=d.transaction('k').objectStore('k').get('s');g.onsuccess=()=>r(g.result)})};
+let sT;const save=()=>{clearTimeout(sT);sT=setTimeout(async()=>(await db).transaction('k','readwrite').objectStore('k').put(S,'s'),300)};
+const rd=f=>new Promise(r=>{const x=new FileReader;x.onload=()=>r(x.result);x.readAsDataURL(f)});
+const ld=s=>new Promise(r=>{if(!s)return r(null);const i=new Image;i.crossOrigin='anonymous';i.onload=()=>r(i);i.onerror=()=>{if(s.includes('black-white')&&!i.f){i.f=1;i.src=s.replace('versions/generation-v/black-white/','')}else r(null)};i.src=s});
+const dl=(blob,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click()};
+const mk=k=>({name:'',title:TT[k[0]=='c'?0:k[0]=='e'?1:k[0]=='m'?2:3],spec:'',bio:'',img:'',a:0,T:['Première rencontre','Revanche','Post-game'].map(n=>({n,team:[]})),badge:{name:'',img:''},tpl:k[0]=='m'?2:k[0]=='e'||k[0]=='x'?1:0,cc:'',z:1,ox:0,oy:0,num:k[0]=='c'?+k[1]:0,rw:''});
+const ks=()=>[...KEYS,...S.ex],tm=t=>t.T[t.a].team;const initS=()=>{const tr={};KEYS.forEach(k=>tr[k]=mk(k));return{fk:[],ex:[],tr}};
+const info=r=>{const f=r.k=='f'&&S.fk.find(a=>a.id==r.id);return{n:r.k=='f'?(f?f.name:'?'):r.n,s:r.cimg||(r.k=='f'?(f?(r.sh&&f.simg?f.simg:f.img):''):SP(r.form||r.id,r.sh))}};const im=r=>`<img src="${info(r).s}">`;
+const M=h=>$('#modal').innerHTML=`<div class="mb">${h}</div>`,X=()=>{$('#modal').innerHTML='';render(cur)};
+
+const NAV=[['home','🏠 Tableau de bord'],['dex','📖 Pokédex'],['fk','✨ Fakémon'],['champ',"🏅 Champions d'Arène"],['conseil','🔥 Conseil 4'],['maitre','👑 Maître'],['badge','🎖️ Badges'],['cards','🃏 Cartes générées']];
+function render(v){cur=v;$('#nav').innerHTML='<h1>Pokémon League Creator</h1>'+NAV.map(([k,l])=>`<a class="${k==v?'on':''}" onclick="render('${k}')">${l}</a>`).join('');
+const m=$('#main');
+if(v=='home')m.innerHTML=`<h2>Ma Ligue Pokémon</h2><p>${S.fk.length} Fakémon · ${ks().filter(k=>S.tr[k].name).length} dresseurs créés · ${P.length} Pokémon officiels chargés</p>
+<button onclick="expJ()">💾 Exporter le projet</button><label class="s" style="display:inline-block"><button onclick="this.nextSibling.click()" class="s">📂 Importer un projet</button><input type="file" hidden accept=".json" onchange="impJ(this.files[0])"></label><button class="s" onclick="pdf()">📄 PDF</button><button class="s" onclick="recap()">🖼 Image récap</button><button class="s" onclick="snap()">📌 Sauvegarder</button><button class="s" onclick="rest()">↩ Restaurer</button><button onclick="addBoss()">+ Boss</button>${sec('Les 8 Champions d\'Arène',KEYS.slice(0,8))}${sec('Le Conseil 4',KEYS.slice(8,12))}${sec('Le Maître de la Ligue',['m1'])}${S.ex.length?sec('Boss supplémentaires',S.ex):''}`;
+else if(v=='champ')m.innerHTML='<h2>Champions d\'Arène</h2>'+sec('',KEYS.slice(0,8));
+else if(v=='conseil')m.innerHTML='<h2>Conseil 4</h2>'+sec('',KEYS.slice(8,12));
+else if(v=='maitre')m.innerHTML='<h2>Maître de la Ligue</h2>'+sec('',['m1']);
+else if(v=='dex'){m.innerHTML='<h2>Pokédex</h2><div id="l"></div>';lst($('#l'),null,false)}
+else if(v=='fk'){m.innerHTML='<h2>Fakémon</h2><button onclick="fkEdit()">+ Nouveau Fakémon</button><p>Cliquez sur un Fakémon pour le modifier.</p><div id="l"></div>';lst($('#l'),r=>fkEdit(r.id),true)}
+else if(v=='badge')m.innerHTML='<h2>Badges</h2><div class="tg">'+KEYS.slice(0,8).map(k=>{const t=S.tr[k];return`<div class="tc" style="cursor:default;background:#1c1f2b"><b>Arène ${k[1]} — ${esc(t.name||'(vide)')}</b>${t.badge.img?`<img class="p" src="${t.badge.img}">`:'<div class="p" style="display:block"></div>'}<input placeholder="Nom du badge" value="${esc(t.badge.name)}" oninput="S.tr.${k}.badge.name=this.value;save()" style="width:100%;margin-top:6px"><input type="file" accept="image/png,image/webp" onchange="badgeUp('${k}',this.files[0])"></div>`}).join('')+'</div>';
+else if(v=='cards'){m.innerHTML='<h2>Cartes générées</h2><button onclick="zipAll()">📦 ZIP</button><button class="s" onclick="pdf()">📄 PDF</button><button class="s" onclick="recap()">🖼 Image récap</button><div class="cg" id="cg"></div>';ks().filter(k=>S.tr[k].name).forEach(async k=>{const c=await draw(k),d=document.createElement('div');d.append(c);const b=document.createElement('button');b.textContent='⬇ PNG';b.onclick=()=>c.toBlob(x=>dl(x,S.tr[k].name+'.png'));d.append(b);$('#cg').append(d)})}}
+const sec=(t,ks)=>(t?`<h3>${t}</h3>`:'')+'<div class="tg">'+ks.map(k=>{const d=S.tr[k];return`<div class="tc" draggable="true" data-k="${k}" style="background:linear-gradient(160deg,${d.tpl==2?'#33333d':d.cc||tyCol(d.spec)},#0a0a0d)" onclick="edit('${k}')">${d.badge.img&&k[0]=='c'?`<img class="bd" src="${d.badge.img}">`:''}${d.img?`<img class="p" src="${d.img}">`:'<div class="p" style="height:110px"></div>'}<b>${esc(d.name||(k[0]=='c'?'Champion '+k[1]:k[0]=='e'?'Membre '+k[1]:'Maître'))}</b><small>${tyName(d.spec)}</small><div class="tm">${tm(d).map(r=>im(r)).join('')}</div></div>`}).join('')+'</div>';
+
+function lst(box,pick,fkOnly){box.innerHTML=`<input placeholder="Rechercher par nom…" id="q"> <select id="t"><option value="">Tous les types</option>${Object.entries(TY).map(([k,v])=>`<option value="${k}">${v[0]}</option>`)}</select> <select id="gn"><option value="">Toutes générations</option>${GN.map((g,i)=>`<option value="${i}">${g[0]}</option>`)}</select> ${pick&&!fkOnly?'<select id="s"><option value="p">Officiels</option><option value="f">Fakémon</option></select>':''}<div class="g" id="g"></div>`;
+const g=box.querySelector('#g'),q=box.querySelector('#q'),t=box.querySelector('#t'),s=box.querySelector('#s'),gn=box.querySelector('#gn');let it=[];
+const rf=async()=>{const n=q.value.toLowerCase(),ty=t.value;if(fkOnly||(s&&s.value=='f'))it=S.fk.filter(f=>f.name.toLowerCase().includes(n)&&(!ty||f.types.includes(ty))).map(f=>({k:'f',id:f.id,n:f.name,s:f.img}));
+else{let set=null;if(ty){if(!TS[ty])try{TS[ty]=new Set((await(await fetch('https://pokeapi.co/api/v2/type/'+ty)).json()).pokemon.map(p=>+p.pokemon.url.split('/').at(-2)))}catch(e){TS[ty]=new Set()}set=TS[ty]}
+it=P.filter(p=>p.n.includes(n)&&(!set||set.has(p.id))&&(!gn.value||gen(p.id)==gn.value)).slice(0,400).map(p=>({k:'p',id:p.id,n:p.n,s:SP(p.id)}))}
+g.innerHTML=it.map((o,i)=>`<div class="pk" data-i="${i}"><img loading="lazy" src="${o.s}"><br>${esc(o.n)}</div>`).join('')||'<p>Aucun résultat.</p>'};
+g.onclick=e=>{const d=e.target.closest('.pk');if(d&&pick){const o=it[d.dataset.i];pick(o.k=='f'?{k:'f',id:o.id}:{k:'p',id:o.id,n:o.n})}};
+q.oninput=t.onchange=gn.onchange=rf;if(s)s.onchange=rf;rf()}
+
+function fkEdit(id){const nw=!id,f=S.fk.find(a=>a.id==id)||{id:Date.now(),name:'',types:[],desc:'',img:''};const o=i=>`<select id="t${i}"><option value="">—</option>${Object.entries(TY).map(([k,v])=>`<option value="${k}" ${f.types[i]==k?'selected':''}>${v[0]}</option>`)}</select>`;
+M(`<h2>Fakémon</h2><label>Nom<input id="n" value="${esc(f.name)}"></label><label>Image (PNG/WEBP)<input type="file" id="i" accept="image/*"></label><div id="pv">${f.img?`<img src="${f.img}" height="80">`:''}</div><label>Sprite chromatique (facultatif)<input type="file" id="si" accept="image/*"></label><label>Famille d'évolution (facultatif)<input id="fa" value="${esc(f.fam||'')}"></label><label>Type 1${o(0)}</label><label>Type 2${o(1)}</label><label>Description<textarea id="d">${esc(f.desc)}</textarea></label>
+<button onclick="fkSave(${f.id},${nw})">Enregistrer</button>${nw?'':`<button class="s" onclick="if(confirm('Supprimer ?')){S.fk=S.fk.filter(a=>a.id!=${f.id});save();X()}">Supprimer</button>`}<button class="s" onclick="X()">Annuler</button>`);
+$('#i').onchange=async e=>{f.img=await rd(e.target.files[0]);$('#pv').innerHTML=`<img src="${f.img}" height="80">`};$('#si').onchange=async e=>{f.simg=await rd(e.target.files[0])};window._f=f}
+function fkSave(id,nw){const f=window._f;f.name=$('#n').value.trim();if(!f.name||!f.img)return alert('Nom et image requis.');f.types=[$('#t0').value,$('#t1').value].filter(Boolean);f.desc=$('#d').value;f.fam=$('#fa').value;if(nw)S.fk.push(f);save();X()}
+
+const up=async(k,f)=>{if(f){S.tr[k].img=await rd(f);save();edit(k)}};
+const badgeUp=async(k,f,e)=>{if(f){S.tr[k].badge.img=await rd(f);save();e?edit(k):render('badge')}};
+const IB='https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/';
+const cl=t=>t.cc||(t.spec?TY[t.spec][1]:'#666666');
+const isM=r=>r.mg||(r.form&&(P.find(p=>p.id==r.form)||{n:''}).n.includes('mega'));
+const R=(k,i,p,v)=>{tm(S.tr[k])[i][p]=v;save()};
+let pvT;const pv=k=>{clearTimeout(pvT);pvT=setTimeout(async()=>{const c=await draw(k),o=$('#pc');if(o){o.replaceWith(c);c.id='pc'}},150)};
+const mig=()=>{S.ex=S.ex||[];Object.keys(S.tr).forEach(k=>{const t=S.tr[k];if(!t.T){const d=mk(k);t.T=d.T;t.T[0].team=t.team||[];delete t.team;Object.assign(t,{a:0,tpl:d.tpl,cc:'',z:1,ox:0,oy:0,num:d.num,rw:''})}})};
+const snap=async()=>{(await db).transaction('k','readwrite').objectStore('k').put(JSON.parse(JSON.stringify(S)),'snap');alert('Sauvegarde manuelle effectuée.')};
+const rest=async()=>{(await db).transaction('k').objectStore('k').get('snap').onsuccess=e=>{if(!e.target.result)return alert('Aucune sauvegarde manuelle.');if(confirm('Restaurer la dernière sauvegarde manuelle ?')){S=e.target.result;mig();save();render('home')}}};
+const addBoss=()=>{const k='x'+Date.now();S.tr[k]=mk(k);S.tr[k].name='Nouveau boss';S.ex.push(k);save();edit(k)};
+const dup=k=>{const n='x'+Date.now();S.tr[n]=JSON.parse(JSON.stringify(S.tr[k]));S.tr[n].name+=' (copie)';S.ex.push(n);save();edit(n)};
+const del=k=>{if(confirm('Supprimer ce boss ?')){S.ex=S.ex.filter(x=>x!=k);delete S.tr[k];save();X()}};
+const mv=(k,i,d)=>{const a=tm(S.tr[k]),j=i+d;if(j<0||j>=a.length)return;[a[i],a[j]]=[a[j],a[i]];save();edit(k)};
+const sig=(k,i)=>{tm(S.tr[k]).forEach((r,j)=>r.sig=j==i&&!r.sig);save();edit(k)};
+const cs=async(k,i,f)=>{if(f){R(k,i,'cimg',await rd(f));ps(k,i)}};
+const add=k=>{const t=S.tr[k];if(tm(t).length>=6)return alert('6 Pokémon maximum.');M('<h2>Choisir un Pokémon</h2><div id="l"></div><button class="s" onclick="edit(\''+k+'\')">Retour</button>');lst($('#l'),r=>{if(tm(t).some(x=>x.k==r.k&&x.id==r.id)&&!confirm('Déjà dans cette équipe. Ajouter quand même ?'))return;tm(t).push(r);save();edit(k)},false)};
+function edit(k){const t=S.tr[k],T=tm(t),ch=k[0]=='c',o=(p,l,v)=>`<label>${l}<input value="${esc(v)}" oninput="S.tr.${k}.${p}=this.value;save();pv('${k}')"></label>`,rg=(p,l,a,b,s)=>`<label>${l}<input type="range" min="${a}" max="${b}" step="${s}" value="${t[p]}" oninput="S.tr.${k}.${p}=+this.value;save();pv('${k}')"></label>`,sl=(p,x)=>`<select onchange="S.tr.${k}.${p}=this.value;save();pv('${k}')">${x}</select>`;
+M(`<div style="display:flex;gap:16px;flex-wrap:wrap"><div style="flex:1;min-width:280px"><h2>${esc(t.name||'Nouveau dresseur')}</h2>${o('name','Nom',t.name)}
+<label>Titre${sl('title',TT.map(x=>`<option ${t.title==x?'selected':''}>${x}</option>`).join(''))}</label>
+<label>Spécialité${sl('spec','<option value="">Aucune</option>'+Object.entries(TY).map(([a,v])=>`<option value="${a}" ${t.spec==a?'selected':''}>${v[0]}</option>`).join(''))}</label>
+${ch?o('num',"Numéro d'arène",t.num):''}
+<label>Portrait (PNG, WEBP, JPG)<input type="file" accept="image/*" onchange="up('${k}',this.files[0])"></label>${rg('z','Taille',.5,3,.05)}${rg('ox','Position horizontale',-100,100,1)}${rg('oy','Position verticale',-100,100,1)}
+<label>Biographie<textarea oninput="S.tr.${k}.bio=this.value;save()">${esc(t.bio)}</textarea></label>${o('rw','Récompense (CT / objet)',t.rw)}
+<label>Modèle de carte${sl('tpl',['Classique','Prestige','Sombre'].map((n,i)=>`<option value="${i}" ${t.tpl==i?'selected':''}>${n}</option>`).join(''))}</label>
+<label>Couleur<input type="color" value="${cl(t)}" oninput="S.tr.${k}.cc=this.value;save();pv('${k}')"></label><button class="s" onclick="S.tr.${k}.cc='';save();edit('${k}')">Couleur du type</button>
+${ch?o('badge.name','Nom du badge',t.badge.name)+`<label>Image du badge<input type="file" accept="image/*" onchange="badgeUp('${k}',this.files[0],1)"></label>`:''}
+<h3>Équipes</h3>${t.T.map((x,i)=>`<button class="${i==t.a?'':'s'}" onclick="S.tr.${k}.a=${i};save();edit('${k}')">${esc(x.n)}</button>`).join('')}${o(`T[${t.a}].n`,"Nom de l'équipe",t.T[t.a].n)}
+${T.map((r,i)=>{const n=info(r);return`<div class="row"><img src="${n.s}"><span style="cursor:pointer" onclick="ps('${k}',${i})">${esc(n.n)}${r.sh?' ✨':''}${isM(r)?' [M]':''} ⚙</span><button class="s" onclick="mv('${k}',${i},-1)">↑</button><button class="s" onclick="mv('${k}',${i},1)">↓</button><button class="${r.sig?'':'s'}" onclick="sig('${k}',${i})">★</button><button class="s" onclick="tm(S.tr.${k}).splice(${i},1);save();edit('${k}')">✕</button></div>`}).join('')}
+<button onclick="add('${k}')">+ Ajouter un Pokémon (${T.length}/6)</button></div><div style="width:260px;flex:none"><canvas id="pc"></canvas></div></div>
+<p><button onclick="X()">Terminer</button><button class="s" onclick="dup('${k}')">Dupliquer</button>${k[0]=='x'?`<button class="s" onclick="del('${k}')">Supprimer</button>`:`<button class="s" onclick="if(confirm('Réinitialiser ?')){S.tr.${k}=mk('${k}');save();X()}">Réinitialiser</button>`}</p>`);pv(k)}
+function ps(k,i){const r=tm(S.tr[k])[i],o=info(r),fm=r.k=='p'?P.filter(p=>p.id>10000&&p.n.startsWith(r.n+' ')):[],a=`'${k}',${i}`,f=(p,l,t='text')=>`<label>${l}<input type="${t}" value="${esc(r[p]||'')}" oninput="R(${a},'${p}',this.value)"></label>`;
+M(`<h2>${esc(o.n)}</h2><img src="${o.s}" width="120" style="image-rendering:pixelated">
+<label><input type="checkbox" ${r.sh?'checked':''} onchange="R(${a},'sh',this.checked);ps(${a})"> Chromatique (Shiny)</label>
+${fm.length?`<label>Forme<select onchange="R(${a},'form',+this.value||0);ps(${a})"><option value="">Normale</option>${fm.map(p=>`<option value="${p.id}" ${r.form==p.id?'selected':''}>${esc(p.n)}</option>`).join('')}</select></label>`:''}
+<label><input type="checkbox" ${r.mg?'checked':''} onchange="R(${a},'mg',this.checked)"> Symbole Méga</label>
+<label>Objet tenu (tapez pour chercher)<input list="il" value="${esc(r.item||'')}" onchange="R(${a},'item',this.value);ps(${a})"></label>${r.item?`<img src="${IB}${esc(r.item)}.png" width="32">`:''}<datalist id="il">${IT.map(n=>`<option value="${n}">`).join('')}</datalist>
+<label>Sprite personnalisé (Méga perso, forme spéciale)<input type="file" accept="image/*" onchange="cs(${a},this.files[0])"></label>${r.cimg?`<button class="s" onclick="R(${a},'cimg','');ps(${a})">Retirer</button>`:''}
+${f('lv','Niveau','number')}${f('ab','Talent')}${f('mvs','Attaques')}${f('na','Nature')}<button onclick="edit('${k}')">OK</button>`)}
+async function draw(k){const t=S.tr[k],T=tm(t),tp=+t.tpl,c=document.createElement('canvas');c.width=960;c.height=1360;const x=c.getContext('2d');x.scale(2,2);
+const col=cl(t),dk=tp==2,gold=dk?'#e8c14a':tp==1?'#f5e08a':'#ffcb05',g=x.createLinearGradient(0,0,480,680);
+if(dk){g.addColorStop(0,'#2a2a33');g.addColorStop(.5,'#09090c');g.addColorStop(1,'#22222c')}else{g.addColorStop(0,col);g.addColorStop(1,'#10121a')}
+x.fillStyle=g;x.fillRect(0,0,480,680);x.fillStyle='#fff';x.globalAlpha=.07;for(let i=0;i<7;i++){x.beginPath();x.arc(60+i*70,330+(i%2)*160,90+i*8,0,7);x.fill()}x.globalAlpha=1;
+x.strokeStyle=gold;x.lineWidth=12;x.strokeRect(6,6,468,668);if(tp){x.lineWidth=2;x.strokeRect(18,18,444,644)}
+const fit=(i,a,b,w,h)=>{if(!i)return;const r=Math.min(w/i.width,h/i.height);x.drawImage(i,a+(w-i.width*r)/2,b+(h-i.height*r)/2,i.width*r,i.height*r)};
+x.fillStyle='#fffd';x.fillRect(30,30,160,160);const pi=await ld(t.img);
+if(pi){x.save();x.beginPath();x.rect(30,30,160,160);x.clip();const r=Math.max(160/pi.width,160/pi.height)*t.z,w=pi.width*r,h=pi.height*r;x.drawImage(pi,30+(160-w)/2+t.ox*.8,30+(160-h)/2+t.oy*.8,w,h);x.restore()}
+x.strokeStyle=gold;x.lineWidth=3;x.strokeRect(30,30,160,160);
+x.fillStyle='#fff';x.font='bold 32px sans-serif';x.fillText(t.name||'Sans nom',205,70,255);x.font='bold 15px sans-serif';x.fillStyle=gold;x.fillText(t.title.toUpperCase()+(t.title==TT[0]&&t.num?' N°'+t.num:''),205,98,255);
+x.fillStyle='#fff';x.font='14px sans-serif';x.fillText(t.spec?'Type '+tyName(t.spec):'Tous types',205,126);if(t.rw)x.fillText('Récompense : '+t.rw,205,150,255);
+const im=await Promise.all(T.map(r=>ld(info(r).s))),it=await Promise.all(T.map(r=>ld(r.item&&IB+r.item+'.png')));
+T.forEach((r,i)=>{const a=24+(i%3)*148,b=210+Math.floor(i/3)*200;x.fillStyle='#0008';x.fillRect(a,b,144,192);x.strokeStyle=r.sig?'#ffcb05':'#fff4';x.lineWidth=r.sig?3:1;x.strokeRect(a,b,144,192);
+x.imageSmoothingEnabled=false;fit(im[i],a+8,b+8,128,128);x.imageSmoothingEnabled=true;fit(it[i],a+4,b+112,32,32);
+x.textAlign='center';x.fillStyle='#fff';x.font='bold 14px sans-serif';x.fillText((r.sig?'★ ':'')+info(r).n,a+72,b+170,136);x.textAlign='left';
+if(r.sh){x.fillStyle='#ffe66d';x.font='20px sans-serif';x.fillText('✦',a+8,b+24)}
+if(isM(r)){x.fillStyle=gold;x.beginPath();x.arc(a+124,b+22,14,0,7);x.fill();x.fillStyle='#000';x.font='bold 15px sans-serif';x.textAlign='center';x.fillText('M',a+124,b+27);x.textAlign='left'}});
+x.fillStyle='#fff';x.font='13px sans-serif';x.fillText(t.T[t.a].n,30,650);
+if(t.badge.img){fit(await ld(t.badge.img),396,602,64,64);x.textAlign='right';x.font='bold 14px sans-serif';x.fillText(t.badge.name,388,640,200)}
+return c}
+const cardsList=()=>ks().filter(k=>S.tr[k].name);
+async function pdf(){const l=cardsList();if(!l.length)return alert('Aucun dresseur nommé.');const d=new jspdf.jsPDF({unit:'px',format:[480,680]});for(let i=0;i<l.length;i++){if(i)d.addPage([480,680]);d.addImage((await draw(l[i])).toDataURL('image/jpeg',.92),'JPEG',0,0,480,680)}d.save('ligue.pdf')}
+async function recap(){const l=cardsList().filter(k=>k[0]!='x'),n=4,c=document.createElement('canvas');c.width=n*480;c.height=Math.ceil(l.length/n)*680;const x=c.getContext('2d');x.fillStyle='#12141c';x.fillRect(0,0,c.width,c.height);for(let i=0;i<l.length;i++)x.drawImage(await draw(l[i]),(i%n)*480,Math.floor(i/n)*680,480,680);c.toBlob(b=>dl(b,'recap-ligue.png'))}
+document.addEventListener('error',e=>{const i=e.target;if(i.tagName=='IMG'&&i.src.includes('black-white')&&!i.dataset.x){i.dataset.x=1;i.src=i.src.replace('versions/generation-v/black-white/','')}},true);
+let _d;document.addEventListener('dragstart',e=>{const c=e.target.closest&&e.target.closest('.tc[data-k]');if(c)_d=c.dataset.k});
+document.addEventListener('dragover',e=>{if(e.target.closest&&e.target.closest('.tc[data-k]'))e.preventDefault()});
+document.addEventListener('drop',e=>{const c=e.target.closest&&e.target.closest('.tc[data-k]');if(!c||!_d)return;e.preventDefault();const a=_d,b=c.dataset.k;if(a!=b&&a[0]==b[0]){[S.tr[a],S.tr[b]]=[S.tr[b],S.tr[a]];save();render(cur)}_d=0});
+async function zipAll(){const z=new JSZip();for(const k of ks().filter(k=>S.tr[k].name)){const c=await draw(k);z.file(k+'-'+S.tr[k].name+'.png',await new Promise(r=>c.toBlob(r)))}dl(await z.generateAsync({type:'blob'}),'cartes-ligue.zip')}
+const expJ=()=>dl(new Blob([JSON.stringify(S)],{type:'application/json'}),'ma-ligue.json');
+const impJ=async f=>{try{S=JSON.parse(await f.text());if(!S.tr||!S.fk)throw 0;mig();save();render('home')}catch(e){alert('Fichier invalide.')}};
+(async()=>{S=await load()||initS();mig();render('home');
+try{const l=localStorage.pl;P=l?JSON.parse(l):(await(await fetch('https://pokeapi.co/api/v2/pokemon?limit=2000')).json()).results.map(p=>({id:+p.url.split('/').at(-2),n:p.name.replace(/-/g,' ')}));localStorage.pl=JSON.stringify(P);render(cur)}catch(e){alert('Impossible de charger la liste des Pokémon (connexion internet requise la première fois).')}try{IT=localStorage.il?JSON.parse(localStorage.il):(await(await fetch('https://pokeapi.co/api/v2/item?limit=2500')).json()).results.map(i=>i.name);localStorage.il=JSON.stringify(IT)}catch(e){}})();
+</script></body></html>
